@@ -1,2 +1,2 @@
-# smb-md
- Super Mario Brothers 1 on the Sega Genesis
+# Super Mario Bros. on the Sega Genesis
+It's a thing.
