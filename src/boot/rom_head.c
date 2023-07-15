@@ -9,9 +9,9 @@ const ROMHeader rom_header = {
 #else
     "SEGA MEGA DRIVE ",
 #endif
-    "(C)RD23 2023.JUN",
-    "SUPER MARIO BROS        MEGADRIVE BUILD 20230628",
-    "SUPER MARIO BROS        GENESIS   BUILD 20230628",
+    "(C)RD23 2023.JUL",
+    "SUPER MARIO BROS.       MEGADRIVE BUILD 20230715",
+    "SUPER MARIO BROS.       GENESIS   BUILD 20230715",
     "GM 39766434-00",
     0x000,
     "JD              ",

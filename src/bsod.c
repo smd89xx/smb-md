@@ -8,35 +8,14 @@ static void joyEvent_BSOD(u16 joy, u16 changed, u16 state)
     {
         switch (*stopcode_public)
         {
-        case 0:
-        {
-            SYS_hardReset();
-            break;
-        }
-        case 1:
-        {
-            SYS_hardReset();
-            break;
-        }
-        case 2:
-        {
-            SYS_hardReset();
-            break;
-        }
-        case 3:
-        {
-            SYS_hardReset();
-            break;
-        }
         case 4:
         {
-            XGM_setPCM(64,bowser_fireball_sfx,sizeof(bowser_fireball_sfx));
-            XGM_startPlayPCM(64,15,SOUND_PCM_CH2);
+            MDS_request(MDS_SE1,BGM_SMB1FIREBALL);
             break;
         }
         default:
         {
-            killExec(genericErr);
+            SYS_hardReset();
             break;
         }
         }
@@ -45,14 +24,14 @@ static void joyEvent_BSOD(u16 joy, u16 changed, u16 state)
 
 void killExec(u32 stopcode)
 {
-    PSG_reset();
-    XGM_startPlay(player_down);
     VDP_loadFont(menu_font.tileset,DMA);
     SPR_end();
     VDP_setScreenWidth320();
+    MDS_request(MDS_BGM,BGM_SMB1GAMEOVER);
     VDP_clearPlane(BG_A,TRUE);
     PAL_setColor(0,0x0000);
     VDP_setWindowVPos(FALSE,0);
+    VDP_clearPlane(BG_B,TRUE);
     VDP_setScrollingMode(HSCROLL_PLANE,VSCROLL_PLANE);
     VDP_setHorizontalScroll(BG_A,0);
     VDP_setVerticalScroll(BG_A,0);
@@ -75,7 +54,7 @@ void killExec(u32 stopcode)
     case 1:
     {
         errMem = &level[0];
-        errVal = (level[0] << 8) + level[1];
+        errVal = *(u16 *)errMem;
         break;
     }
     case 2:
@@ -94,9 +73,21 @@ void killExec(u32 stopcode)
         errVal = getConsoleRegion();
         break;
     }
+    case 5:
+    {
+        errMem = &playerState;
+        errVal = *(u8 *)errMem;
+        break;
+    }
+    case 6:
+    {
+        errMem = &bonusScreen;
+        errVal = *(u8 *)errMem;
+        break;
+    }
     default:
     {
-        errMem = NULL;
+        killExec(genericErr);
         break;
     }
     }
@@ -109,6 +100,7 @@ void killExec(u32 stopcode)
     JOY_setEventHandler(joyEvent_BSOD);
     while (1)
     {
+        MDS_update();
         SYS_doVBlankProcess();
     }
 }

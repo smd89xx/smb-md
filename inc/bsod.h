@@ -2,7 +2,7 @@
 
 #include "includes.h"
 
-enum stopCodes {genericErr, lvlOutOfRange, z80Overload, featureNotFound, badRegion};
+enum stopCodes {genericErr, lvlOutOfRange, z80Overload, featureNotFound, badRegion, stateOutOfRange, bonusOutOfRange};
 
 
 /// @brief Shows a BSOD.

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "includes.h"
+#include "mdsdat.h"
 #include "tile.h"
-#include "sfx.h"
-#include "mus.h"
 #include "spr.h"
