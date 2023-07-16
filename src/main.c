@@ -43,6 +43,11 @@ enum levelTypes
     lvlTypeNight,
     lvlTypeOverworldMushrooms,
 };
+enum tileTypes
+{
+    tileBlank,
+    tileSolid
+};
 
 enum camScrlBounds
 {
@@ -102,6 +107,9 @@ const u8 playerYStartPositions[4] = {48,64,192,96};
 bool canScroll = TRUE;
 u8 bonusScreen = 255;
 u16 mapWidth;
+bool shouldUpdatePlayer = TRUE;
+bool playerVelocityLeft,playerVelocityRight,playerVelocityUp,playerVelocityDown;
+
 
 static void camPos()
 {
@@ -240,11 +248,15 @@ static void qblockGlowCycler()
 
 static void playerMove()
 {
-    s16 px = fix32ToRoundedInt(player_x);
-    s16 py = fix32ToRoundedInt(player_y);
+    s16 px = fix32ToInt(player_x);
+    s16 py = fix32ToInt(player_y);
     if (canScroll == TRUE)
     {
         mapWidth = mapWidths[level[0]][level[1]];
+    }
+    if (shouldUpdatePlayer == FALSE)
+    {
+        return;
     }
     player_x += player_spd_x;
     player_y += player_spd_y;
@@ -274,11 +286,21 @@ static void playerMove()
         player_y = FIX32(0);
         MDS_request(MDS_SE1,BGM_SMB1BUMP);
     }
+    else if (player_y >= FIX32(240))
+    {
+        player_y = FIX32(240);
+        shouldUpdatePlayer = FALSE;
+        death();
+    }
     SPR_setPosition(player_spr, px - new_cam_x, py);
 }
 
 static void death()
 {
+    playerVelocityDown = FALSE;
+    playerVelocityUp = FALSE;
+    playerVelocityLeft = FALSE;
+    playerVelocityRight = FALSE;
     SPR_releaseSprite(player_spr);
     playerState = 0;
     spawnPlayer();
@@ -293,7 +315,7 @@ static void death()
         qblockGlowCycler();
         MDS_update();
         player_y += FIX32(0.5);
-        playerMove();
+        SPR_setPosition(player_spr,fix32ToRoundedInt(player_x),fix32ToRoundedInt(player_y));
         if (player_y == FIX32(vertRes-1))
         {
             player_y = FIX32(vertRes + 1);
@@ -302,6 +324,7 @@ static void death()
         if (deathTimer == 0)
         {
             lives--;
+            shouldUpdatePlayer = TRUE;
             introScreen();
         }
     }
@@ -348,7 +371,7 @@ static void setLevelType(u8 lvlType)
     }
 }
 
-static void drawLevel()
+static bool *drawLevel()
 {
     u16 basetileVRAM = TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, ind + title_img.tileset->numTile);
     player_x = FIX32(42);
@@ -364,9 +387,10 @@ static void drawLevel()
             player_y = FIX32(playerYStartPositions[2]);
             gameTimer = FIX16(timerSets[0]);
             lvlFG = MAP_create(&lvl11, BG_A, basetileVRAM);
-            VDP_setTileMapEx(BG_B,&smb1_bg_hills,basetileVRAM,0,0,0,0,64,28,DMA);
+            VDP_setTileMapEx(BG_B,&smb1_bg_hills,basetileVRAM,0,0,0,0,64,26,DMA);
             MAP_scrollTo(lvlFG, 0, 0);
             MEM_free(lvlFG);
+            return LVL11_COLLISION;
             break;
         }
         default:
@@ -473,34 +497,40 @@ static void joyEvent_game(u16 joy, u16 changed, u16 state)
     {
         SPR_setAnim(player_spr,playerMoving);
         SPR_setHFlip(player_spr,TRUE);
-        player_spd_x = FIX32(-2.25);
+        playerVelocityLeft = TRUE;
+        playerVelocityRight = FALSE;
     }
     else if (state & BUTTON_RIGHT)
     {
         SPR_setAnim(player_spr,playerMoving);
         SPR_setHFlip(player_spr,FALSE);
-        player_spd_x = FIX32(2.25);
+        playerVelocityRight = TRUE;
+        playerVelocityLeft = FALSE;
     }
     else
     {
         SPR_setAnim(player_spr,playerIdle);
-        player_spd_x = FIX32(0);
+        playerVelocityLeft = FALSE;
+        playerVelocityRight = FALSE;
     }
     if (state & BUTTON_UP)
     {
-        player_spd_y = FIX32(-2.25);
+        playerVelocityUp = TRUE;
+        playerVelocityDown = FALSE;
     }
     else if (state & BUTTON_DOWN)
     {
-        player_spd_y = FIX32(2.25);
+        playerVelocityDown = TRUE;
+        playerVelocityUp = FALSE;
     }
     else
     {
-        player_spd_y = FIX32(0);
+        playerVelocityDown = FALSE;
+        playerVelocityUp = FALSE;
     }
 }
 
-static void drawBonus()
+static bool *drawBonus()
 {
     u16 basetileVRAM = TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, ind + title_img.tileset->numTile);
     player_x = FIX32(pixelToTile(3) + (bonusScreen << 8));
@@ -509,7 +539,7 @@ static void drawBonus()
     {
         killExec(bonusOutOfRange);
     }
-    mapWidth = horzRes + (horzRes * bonusScreen);
+    mapWidth = 1280;
     canScroll = FALSE;
     new_cam_x = bonusScreen << 8;
     setLevelType(lvlTypeUnderground);
@@ -517,6 +547,97 @@ static void drawBonus()
     MAP_scrollTo(lvlFG,new_cam_x,0);
     MEM_free(lvlFG);
     MDS_request(MDS_SE1,BGM_SMB1PIPE);
+    return BONUSROOMS_COLLISION;
+}
+
+static void checkCollision(bool *collisionArray)
+{
+    u16 arrayLength = mapWidth >> 4;
+    u8 playerHitboxLeft;
+    u8 playerHitboxRight;
+    u8 playerHitboxTop;
+    u8 playerHitboxBottom;
+    if (playerState == 0)
+    {
+        playerHitboxLeft = 0;
+        playerHitboxRight = 15;
+        playerHitboxTop = 0;
+        playerHitboxBottom = 15;
+    }
+    else
+    {
+        playerHitboxLeft = 0;
+        playerHitboxRight = 31;
+        playerHitboxTop = 0;
+        playerHitboxBottom = 31;
+    }
+    s16 collisionLeftPos = fix32ToInt(player_x) + playerHitboxLeft;
+    s16 collisionRightPos = fix32ToInt(player_x) + playerHitboxRight;
+    s16 collisionTopPos = fix32ToInt(player_y) + playerHitboxTop;
+    s16 collisionBottomPos = fix32ToInt(player_y) + playerHitboxBottom;
+
+    s16 tileLeftCollisionPos = collisionLeftPos >> 4;
+    s16 tileRightCollisionPos = collisionRightPos >> 4;
+    s16 tileTopCollisionPos = collisionTopPos >> 4;
+    s16 tileBottomCollisionPos = collisionBottomPos >> 4;
+
+    u16 arrayIndexTL = tileLeftCollisionPos + (tileTopCollisionPos * arrayLength);
+    u16 arrayIndexTR = tileRightCollisionPos + (tileTopCollisionPos * arrayLength);
+    u16 arrayIndexBL = tileLeftCollisionPos + (tileBottomCollisionPos * arrayLength);
+    u16 arrayIndexBR = tileRightCollisionPos + (tileBottomCollisionPos * arrayLength);
+    
+    bool tileTypeTL = collisionArray[arrayIndexTL];
+    bool tileTypeTR = collisionArray[arrayIndexTR];
+    bool tileTypeBL = collisionArray[arrayIndexBL];
+    bool tileTypeBR = collisionArray[arrayIndexBR];
+
+    s16 collisionCorrectionPos;
+
+    if (playerVelocityLeft == TRUE)
+    {
+        player_spd_x = FIX32(-1.125);
+        if (tileTypeTL == tileSolid || tileTypeBL == tileSolid)
+        {
+            collisionCorrectionPos = (tileLeftCollisionPos << 4) + 16 - playerHitboxLeft;
+            player_x = FIX32(collisionCorrectionPos);
+        }
+    }
+    else if (playerVelocityRight == TRUE)
+    {
+        player_spd_x = FIX32(1.125);
+        if (tileTypeTR == tileSolid || tileTypeBR == tileSolid)
+        {
+            collisionCorrectionPos = (tileRightCollisionPos << 4) - playerHitboxRight;
+            player_x = intToFix32(collisionCorrectionPos);
+        }
+    }
+    else
+    {
+        player_spd_x = FIX32(0);
+    }
+    if (playerVelocityDown == TRUE)
+    {
+        player_spd_y = FIX32(1.125);
+        if (tileTypeBL == tileSolid || tileTypeBR == tileSolid)
+        {
+            collisionCorrectionPos = (tileBottomCollisionPos << 4) - playerHitboxBottom;
+            player_y = FIX32(collisionCorrectionPos);
+        }
+    }
+    else if (playerVelocityUp == TRUE)
+    {
+        player_spd_y = FIX32(-1.125);
+        if (tileTypeTL == tileSolid || tileTypeTR == tileSolid)
+        {
+            MDS_request(MDS_SE1,BGM_SMB1BUMP);
+            collisionCorrectionPos = (tileTopCollisionPos << 4) + 16 - playerHitboxTop;
+            player_y = FIX32(collisionCorrectionPos);
+        }
+    }
+    else
+    {
+        player_spd_y = FIX32(0);
+    }
 }
 
 static void gameInit(bool initType)
@@ -527,24 +648,26 @@ static void gameInit(bool initType)
     VDP_clearPlane(BG_B, TRUE);
     SPR_reset();
     spawnHUD();
+    bool *collisionArray;
     if (initType == FALSE)
     {
-        drawLevel();
+        collisionArray = drawLevel();
     }
     else
     {
-        drawBonus();
+        collisionArray = drawBonus();
     }
     spawnPlayer();
     SPR_setAnim(player_spr, playerIdle);
     JOY_setEventHandler(joyEvent_game);
     while (1)
     {
-        MDS_update();
-        updateHUD();
         SYS_doVBlankProcess();
+        MDS_update();
         if (paused == FALSE)
         {
+            checkCollision(collisionArray);
+            updateHUD();
             camPos();
             timerUpdate();
             qblockGlowCycler();
@@ -627,7 +750,7 @@ static void title()
     u16 basetileVRAM = TILE_ATTR_FULL(PAL0, FALSE, FALSE, FALSE, ind);
     u16 basetile = TILE_ATTR(PAL1, FALSE, FALSE, FALSE);
     VDP_setTileMapEx(BG_A,title_img.tilemap,basetileVRAM,5,4,0,0,22,11,DMA);
-    VDP_setTileMapEx(BG_A, &title_map, basetileVRAM + title_img.tileset->numTile, 0, 18, 0, 0, 32, 10, DMA);
+    VDP_setTileMapEx(BG_A, &title_map, basetileVRAM + title_img.tileset->numTile, 0, 18, 0, 0, 32, 12, DMA);
     spawnPlayer();
     SPR_setPosition(player_spr, 42, pixelToTile(24));
     VDP_drawTextBG(BG_A, "@1985 NINTENDO", 13, 15);
@@ -670,6 +793,7 @@ int main(bool resetType)
     }
     SPR_init();
     VDP_setScreenWidth256();
+    VDP_setScreenHeight240();
     Z80_unloadDriver();
     MDS_init(mdsseqdat,mdspcmdat);
     PAL_setColors(32, bsod_palette, 32, DMA);
